@@ -1,11 +1,10 @@
 import os
-import sys
-import threading, queue, multiprocessing
 import requests
 from bs4 import BeautifulSoup
 import re
 import sqlite3
 from datetime import datetime, timedelta
+from DataExtractor import *
 
 
 class WebCrawler:
@@ -20,7 +19,8 @@ class WebCrawler:
     dbName = "ICSDatabase.db"
     foundIcsaList = []
     visitedList = []
-    crawlList = ["/icsa-20-072-01"]
+    #crawlList = ["/icsa-20-072-01"]
+    crawlList = []
     baseUrl = "https://www.us-cert.gov/ics/advisories"
     lastPage = 0
 
@@ -33,9 +33,9 @@ class WebCrawler:
             self.createDatabase()
         else:
             self.populateFoundICSAs()
-            self.populateRecentlyCrawled(7)
-        #self.getLastPageNum()
-        #self.getLinksToCrawl()
+            #self.populateRecentlyCrawled(7)
+        self.getLastPageNum()
+        self.getLinksToCrawl()
 
     def createDatabase(self):
         """
@@ -48,6 +48,13 @@ class WebCrawler:
                                         full_page_url text not null, 
                                         crawl_date text not null, 
                                         content blob,
+                                        releaseDate text,
+                                        vendor text,
+                                        equipment text,
+                                        sector text,
+                                        deployed text,
+                                        headquarters text,
+                                        cweList text,
                                         PRIMARY KEY(icsa_id, full_page_url));''')
         conn.commit()
         conn.close()
@@ -145,15 +152,30 @@ class WebCrawler:
                             self.foundIcsaList.append(icsaCombo)
                             print("Found " + icsa + " at " + urlToCrawl)
 
+                            dataExtractor = DataExtractor(soup)
+                            extractorList = dataExtractor.extractData()
+
                             conn = sqlite3.connect(self.dbName)
-                            threadCursor = conn.cursor()
-                            dataTuple = (icsa, urlToCrawl, datetime.strftime(datetime.now(), "%Y-%m-%d"), html_content)
-                            sqlite_insert_query = """INSERT INTO 'ICS' ('icsa_id', 'full_page_url', 'crawl_date', 'content') VALUES (?,?,?,?)"""
-                            threadCursor.execute(sqlite_insert_query, dataTuple)
+                            cursor = conn.cursor()
+                            dataTuple = (icsa, urlToCrawl, datetime.strftime(datetime.now(), "%Y-%m-%d"), html_content, dataExtractor.releaseDate, dataExtractor.vendor, dataExtractor.equipment, dataExtractor.sector, dataExtractor.deployed, dataExtractor.headquarters, dataExtractor.cweString)
+                            sqlite_insert_query = """INSERT INTO 'ICS' ('icsa_id', 'full_page_url', 'crawl_date', 'content', 'releaseDate', 'vendor', 'equipment', 'sector', 'deployed', 'headquarters', 'cweList') VALUES (?,?,?,?,?,?,?,?,?,?,?)"""
+                            cursor.execute(sqlite_insert_query, dataTuple)
                             conn.commit()
                             conn.close()
 
 
+    def tempFunc(self):
+        conn = sqlite3.connect(self.dbName)
+        c = conn.cursor()
+        c.execute('SELECT content FROM ICS')
+        temp = c.fetchall()[0][0]
+        conn.close()
+
+        soup = BeautifulSoup(temp)
+        dataExtractor = DataExtractor(soup)
+        dataExtractor.getVulnInfo()
+
 if __name__ == "__main__":
     webcrawler = WebCrawler()
     webcrawler.crawl()
+    #webcrawler.tempFunc()
