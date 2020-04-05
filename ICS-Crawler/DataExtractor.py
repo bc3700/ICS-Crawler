@@ -5,52 +5,90 @@ class DataExtractor:
     releaseDate = ""
     vendor = ""
     equipment = ""
+    vulnerability = ""
     sector = ""
     deployed = ""
     headquarters = ""
     cweString = ""
-
+    cveString = ""
+    lastRevisedDate = None
 
     def __init__(self, soup):
         self.soup = soup
 
     def extractData(self):
         self.getReleaseDate()
-        self.getLiInfo()
+        self.getGeneralInfo("li")
+        self.getGeneralInfo("p")
         self.getVulnInfo()
+        self.getCveInfo()
 
     def getReleaseDate(self):
         releaseDateTag = self.soup.findAll("div", {"class": "submitted meta-text"})[0]
         releaseDateString = releaseDateTag.text.strip()
         if("Last revised:" in releaseDateString):
-            return None #COME BACK TO
-        else:
-            releaseDateList = releaseDateString.split(":")
-            releaseDateString = releaseDateList[-1].strip()
-            releaseDateString = releaseDateString.replace(",", "")
-            self.releaseDate = datetime.strptime(releaseDateString, "%B %d %Y")
+            dateList = releaseDateString.strip().split("|")
+            releaseDateString = dateList[0]
+            lastRevisedDateString = dateList[1]
+            lastRevisedDateList = lastRevisedDateString.split(":")
+            lastRevisedDateString = lastRevisedDateList[-1].strip()
+            lastRevisedDateString = lastRevisedDateString.replace(",", "")
+            self.lastRevisedDate = datetime.strptime(lastRevisedDateString, "%B %d %Y")
 
-    def getLiInfo(self):
+        releaseDateList = releaseDateString.split(":")
+        releaseDateString = releaseDateList[-1].strip()
+        releaseDateString = releaseDateString.replace(",", "")
+        self.releaseDate = datetime.strptime(releaseDateString, "%B %d %Y")
+
+    def getGeneralInfo(self, tagName):
+        foundVendor = False
+        foundEquipment = False
+        foundVulnerability = False
+        foundSector = False
+        foundDeployed = False
+        foundHeadquarters = False
+
+        if(self.vendor != ""):
+            foundVendor = True
+        if(self.equipment != ""):
+            foundEquipment = True
+        if(self.vulnerability != ""):
+            foundVulnerability = True
+        if(self.sector != ""):
+            foundSector = True
+        if(self.deployed != ""):
+            foundDeployed = True
+        if(self.headquarters != ""):
+            foundHeadquarters = True
+
+        if((foundVendor and foundEquipment and foundVulnerability and foundSector and foundDeployed and foundHeadquarters) == True):
+            return
+
         mainContent = self.soup.findAll("div", {"id": "ncas-content"})[0]
-        liTags = mainContent.findAll("li")
-        for tag in liTags:
-            if("Vendor" in tag.text):
+        tags = mainContent.findAll(tagName)
+        for tag in tags:
+            upperTagText = tag.text.upper()
+            if("VENDOR" in upperTagText):
                 vendorList = tag.text.split(":")
                 self.vendor = vendorList[-1].strip()
 
-            if("Equipment" in tag.text):
+            elif("EQUIPMENT" in upperTagText):
                 equipmentList = tag.text.split(":")
                 self.equipment = equipmentList[-1].strip()
 
-            if("CRITICAL INFRASTRUCTURE SECTORS" in tag.text):
+            elif (("VULNERABILITY" in upperTagText or "VULNERABILITIES" in upperTagText) and self.vulnerability == ""):
+                vulnerabilityList = tag.text.split(":")
+                self.vulnerability = vulnerabilityList[-1].strip()
+
+            elif("CRITICAL INFRASTRUCTURE SECTOR" in upperTagText):
                 sectorList = tag.text.split(":")
                 self.sector = sectorList[-1].strip()
 
-            if("COUNTRIES/AREAS DEPLOYED" in tag.text):
+            elif("COUNTRIES/AREAS DEPLOYED" in upperTagText):
                 deployedList = tag.text.split(":")
                 self.deployed = deployedList[-1].strip()
 
-            if("COMPANY HEADQUARTERS LOCATION" in tag.text):
+            elif("COMPANY HEADQUARTERS LOCATION" in upperTagText):
                 headquartersList = tag.text.split(":")
                 self.headquarters = headquartersList[-1].strip()
 
@@ -61,3 +99,11 @@ class DataExtractor:
 
             for cwe in cweList:
                 self.cweString += cwe + ","
+
+    def getCveInfo(self):
+        cveRegex = re.compile("CVE-[0-9]+-[0-9]+")
+        if (cveRegex.search(self.soup.text)):
+            cveList = re.findall(cveRegex, self.soup.text)
+
+            for cve in cveList:
+                self.cveString += cve + ","

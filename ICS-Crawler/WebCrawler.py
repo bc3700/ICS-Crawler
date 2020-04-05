@@ -1,4 +1,6 @@
 import os
+import sys
+import threading, queue, multiprocessing
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -16,10 +18,12 @@ class WebCrawler:
         foundCVEs (array): array of CVEs already found by the webcrawler
         visited (array): array of URLs already visited by the webcrawler
     """
+    tempFile = "tempLinkList.txt"
     dbName = "ICSDatabase.db"
     foundIcsaList = []
     visitedList = []
-    #crawlList = ["/icsa-20-072-01"]
+    #crawlList = ["/icsa-20-072-01"] #default testing
+    #crawlList = ["/icsa-20-070-04"] # has original and latest revised dates for testing
     crawlList = []
     baseUrl = "https://www.us-cert.gov/ics/advisories"
     lastPage = 0
@@ -33,9 +37,11 @@ class WebCrawler:
             self.createDatabase()
         else:
             self.populateFoundICSAs()
-            #self.populateRecentlyCrawled(7)
+            self.populateRecentlyCrawled(7)
         self.getLastPageNum()
-        self.getLinksToCrawl()
+        #self.getLinksToCrawl()
+        self.tempGetLinks()
+        self.lock = threading.Lock()
 
     def createDatabase(self):
         """
@@ -49,12 +55,15 @@ class WebCrawler:
                                         crawl_date text not null, 
                                         content blob,
                                         releaseDate text,
+                                        lastRevisedDate text,
                                         vendor text,
                                         equipment text,
+                                        vulnerability text,
                                         sector text,
                                         deployed text,
                                         headquarters text,
                                         cweList text,
+                                        cveList text,
                                         PRIMARY KEY(icsa_id, full_page_url));''')
         conn.commit()
         conn.close()
@@ -105,6 +114,7 @@ class WebCrawler:
         self.lastPage = int(lastPage)
 
     def getLinksToCrawl(self):
+        f = open("tempLinkList.txt", "a")
         for i in range(self.lastPage + 1):
             print("CRAWLING PAGE " + str(i))
             urlToCrawl = self.baseUrl + "?page=" + str(i)
@@ -120,10 +130,23 @@ class WebCrawler:
                     if fullLink.lower().startswith("/ics/advisories/icsa"):
                         splitLink = fullLink.split("/")
                         self.crawlList.append("/" + splitLink[3])
+                        f.write("/" + splitLink[3] + "\n")
                         print(splitLink[3])
-
+        f.close()
 
     def crawl(self):
+        """
+        Creates the threads to run the _crawl method
+        :return:
+        """
+        maxThreads = multiprocessing.cpu_count()-1
+        i=0
+        while i<maxThreads:
+            t = threading.Thread(target=self._crawl)
+            i=i+1
+            t.start()
+
+    def _crawl(self):
         """
         Goes through each link in the crawlList and checks for instances of CVEs. If found, the CVE is saved to a database along with the raw html
         :return: None
@@ -153,15 +176,19 @@ class WebCrawler:
                             print("Found " + icsa + " at " + urlToCrawl)
 
                             dataExtractor = DataExtractor(soup)
-                            extractorList = dataExtractor.extractData()
+                            dataExtractor.extractData()
+
+                            self.lock.acquire()
 
                             conn = sqlite3.connect(self.dbName)
                             cursor = conn.cursor()
-                            dataTuple = (icsa, urlToCrawl, datetime.strftime(datetime.now(), "%Y-%m-%d"), html_content, dataExtractor.releaseDate, dataExtractor.vendor, dataExtractor.equipment, dataExtractor.sector, dataExtractor.deployed, dataExtractor.headquarters, dataExtractor.cweString)
-                            sqlite_insert_query = """INSERT INTO 'ICS' ('icsa_id', 'full_page_url', 'crawl_date', 'content', 'releaseDate', 'vendor', 'equipment', 'sector', 'deployed', 'headquarters', 'cweList') VALUES (?,?,?,?,?,?,?,?,?,?,?)"""
+                            dataTuple = (icsa, urlToCrawl, datetime.strftime(datetime.now(), "%Y-%m-%d"), html_content, dataExtractor.releaseDate, dataExtractor.lastRevisedDate, dataExtractor.vendor, dataExtractor.equipment, dataExtractor.vulnerability, dataExtractor.sector, dataExtractor.deployed, dataExtractor.headquarters, dataExtractor.cweString, dataExtractor.cveString)
+                            sqlite_insert_query = """INSERT INTO 'ICS' ('icsa_id', 'full_page_url', 'crawl_date', 'content', 'releaseDate', 'lastRevisedDate', 'vendor', 'equipment', 'vulnerability', 'sector', 'deployed', 'headquarters', 'cweList', 'cveList') VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
                             cursor.execute(sqlite_insert_query, dataTuple)
                             conn.commit()
                             conn.close()
+
+                            self.lock.release()
 
 
     def tempFunc(self):
@@ -174,6 +201,12 @@ class WebCrawler:
         soup = BeautifulSoup(temp)
         dataExtractor = DataExtractor(soup)
         dataExtractor.getVulnInfo()
+
+    def tempGetLinks(self):
+        f = open(self.tempFile, "r")
+        allLinks = f.read().split("\n")
+        for link in allLinks:
+            self.crawlList.append(link)
 
 if __name__ == "__main__":
     webcrawler = WebCrawler()
