@@ -7,7 +7,11 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 from DataExtractor import *
+import time
 
+
+
+DEBUG = False
 
 class WebCrawler:
     """
@@ -22,8 +26,6 @@ class WebCrawler:
     dbName = "ICSDatabase.db"
     foundIcsaList = []
     visitedList = []
-    #crawlList = ["/icsa-20-072-01"] #default testing
-    #crawlList = ["/icsa-20-070-04"] # has original and latest revised dates for testing
     crawlList = []
     baseUrl = "https://www.us-cert.gov/ics/advisories"
     lastPage = 0
@@ -39,8 +41,10 @@ class WebCrawler:
             self.populateFoundICSAs()
             self.populateRecentlyCrawled(7)
         self.getLastPageNum()
-        #self.getLinksToCrawl()
-        self.tempGetLinks()
+        if(DEBUG):
+            self.tempGetLinks()
+        else:
+            self.getLinksToCrawl()
         self.lock = threading.Lock()
 
     def createDatabase(self):
@@ -118,6 +122,7 @@ class WebCrawler:
         for i in range(self.lastPage + 1):
             print("CRAWLING PAGE " + str(i))
             urlToCrawl = self.baseUrl + "?page=" + str(i)
+
             try:
                 r = requests.get(urlToCrawl)
             except requests.exceptions.RequestException as e:
@@ -192,15 +197,15 @@ class WebCrawler:
 
 
     def tempFunc(self):
-        conn = sqlite3.connect(self.dbName)
+        conn = sqlite3.connect("sixth_ICSDatabase.db")
         c = conn.cursor()
-        c.execute('SELECT content FROM ICS')
+        c.execute('SELECT content FROM ICS WHERE icsa_id = "ICSA-20-105-05"')
         temp = c.fetchall()[0][0]
         conn.close()
 
         soup = BeautifulSoup(temp)
         dataExtractor = DataExtractor(soup)
-        dataExtractor.getVulnInfo()
+        dataExtractor.extractData()
 
     def tempGetLinks(self):
         f = open(self.tempFile, "r")
@@ -210,5 +215,8 @@ class WebCrawler:
 
 if __name__ == "__main__":
     webcrawler = WebCrawler()
-    webcrawler.crawl()
-    #webcrawler.tempFunc()
+
+    if(DEBUG):
+        webcrawler.tempFunc()
+    else:
+        webcrawler.crawl()

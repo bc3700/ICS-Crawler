@@ -68,27 +68,37 @@ class DataExtractor:
         tags = mainContent.findAll(tagName)
         for tag in tags:
             upperTagText = tag.text.upper()
-            if("VENDOR" in upperTagText):
+            if("VENDOR:" in upperTagText):
                 vendorList = tag.text.split(":")
                 self.vendor = vendorList[-1].strip()
 
-            elif("EQUIPMENT" in upperTagText):
+            elif("EQUIPMENT:" in upperTagText):
                 equipmentList = tag.text.split(":")
                 self.equipment = equipmentList[-1].strip()
 
-            elif (("VULNERABILITY" in upperTagText or "VULNERABILITIES" in upperTagText) and self.vulnerability == ""):
+            elif (("VULNERABILITY:" in upperTagText or "VULNERABILITIES:" in upperTagText) and self.vulnerability == ""):
                 vulnerabilityList = tag.text.split(":")
                 self.vulnerability = vulnerabilityList[-1].strip()
 
-            elif("CRITICAL INFRASTRUCTURE SECTOR" in upperTagText):
-                sectorList = tag.text.split(":")
-                self.sector = sectorList[-1].strip()
+            elif("CRITICAL INFRASTRUCTURE SECTOR:" in upperTagText or "CRITICAL INFRASTRUCTURE SECTORS:" in upperTagText):
+                sectorListString = tag.text.split(":")[-1]
+                sectorList = sectorListString.split(",")
+                print(sectorList[-1])
+                if(sectorList[-1].strip()[0:3] == "and"):
+                    sectorList[-1] = sectorList[-1].strip()[3:]
+                    sectorListString = ""
+                    for i in range(len(sectorList)):
+                        if(i == len(sectorList) -1):
+                            sectorListString += sectorList[i]
+                        else:
+                            sectorListString += sectorList[i] + ","
+                self.sector = sectorListString
 
-            elif("COUNTRIES/AREAS DEPLOYED" in upperTagText):
+            elif("COUNTRIES/AREAS DEPLOYED:" in upperTagText):
                 deployedList = tag.text.split(":")
                 self.deployed = deployedList[-1].strip()
 
-            elif("COMPANY HEADQUARTERS LOCATION" in upperTagText):
+            elif("COMPANY HEADQUARTERS LOCATION:" in upperTagText):
                 headquartersList = tag.text.split(":")
                 self.headquarters = headquartersList[-1].strip()
 
@@ -96,6 +106,7 @@ class DataExtractor:
         cweRegex = re.compile("CWE-[0-9]+")
         if (cweRegex.search(self.soup.text)):
             cweList = re.findall(cweRegex, self.soup.text)
+            cweList = list(set(cweList))
 
             for cwe in cweList:
                 self.cweString += cwe + ","
@@ -104,6 +115,7 @@ class DataExtractor:
         cveRegex = re.compile("CVE-[0-9]+-[0-9]+")
         if (cveRegex.search(self.soup.text)):
             cveList = re.findall(cveRegex, self.soup.text)
+            cveList = list(set(cveList))
 
             for cve in cveList:
                 self.cveString += cve + ","
